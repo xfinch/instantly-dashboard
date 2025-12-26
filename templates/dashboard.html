@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Instantly.ai Campaign Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .stat-card {
+            transition: transform 0.2s;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+        .campaign-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+        .status-badge {
+            font-size: 0.9rem;
+            padding: 0.5rem 1rem;
+        }
+        .lead-table {
+            background: white;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .btn-campaign {
+            padding: 0.75rem 2rem;
+            font-weight: 600;
+        }
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+        .filter-tabs {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <!-- Header -->
+        <div class="campaign-header">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="mb-2" id="campaign-name">Loading...</h1>
+                    <p class="mb-0 opacity-75">Campaign ID: <span id="campaign-id"></span></p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <span class="badge status-badge" id="campaign-status">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-2">Total Leads</h6>
+                        <h2 class="mb-0" id="stat-total">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-2">Clinic Leads</h6>
+                        <h2 class="mb-0 text-success" id="stat-clinics">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-2">Active Leads</h6>
+                        <h2 class="mb-0 text-primary" id="stat-active">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card stat-card shadow-sm">
+                    <div class="card-body">
+                        <h6 class="text-muted mb-2">Daily Limit</h6>
+                        <h2 class="mb-0 text-info" id="stat-limit">-</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Campaign Controls -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Campaign Controls</h5>
+                <div class="d-flex gap-3">
+                    <button class="btn btn-success btn-campaign" id="btn-start" onclick="startCampaign()">
+                        Start Campaign
+                    </button>
+                    <button class="btn btn-warning btn-campaign" id="btn-pause" onclick="pauseCampaign()">
+                        Pause Campaign
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="refreshData()">
+                        Refresh Data
+                    </button>
+                </div>
+                <div id="campaign-message" class="mt-3"></div>
+            </div>
+        </div>
+
+        <!-- Leads Table -->
+        <div class="card shadow-sm lead-table">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title mb-0">Campaign Leads</h5>
+                    <div class="filter-tabs">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-outline-primary active" onclick="setFilter('clinics')">
+                                Clinic Leads
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" onclick="setFilter('all')">
+                                All Leads
+                            </button>
+                            <button type="button" class="btn btn-outline-primary" onclick="setFilter('other')">
+                                Other Leads
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="leads-container">
+                    <div class="loading">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pagination -->
+                <div id="pagination-container" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentPage = 1;
+        let currentFilter = 'clinics';
+
+        // Load campaign stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/campaign/stats');
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('Error loading stats:', data.error);
+                    return;
+                }
+
+                // Update header
+                document.getElementById('campaign-name').textContent = data.campaign.name;
+                document.getElementById('campaign-id').textContent = data.campaign.id;
+
+                const statusBadge = document.getElementById('campaign-status');
+                statusBadge.textContent = data.campaign.status;
+                statusBadge.className = 'badge status-badge ' +
+                    (data.campaign.status === 'Active' ? 'bg-success' : 'bg-secondary');
+
+                // Update stats
+                document.getElementById('stat-total').textContent = data.stats.total_leads;
+                document.getElementById('stat-clinics').textContent = data.stats.clinic_leads;
+                document.getElementById('stat-active').textContent = data.stats.active_leads;
+                document.getElementById('stat-limit').textContent = data.campaign.daily_limit + '/day';
+
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+
+        // Load leads
+        async function loadLeads(page = 1) {
+            try {
+                const response = await fetch(`/api/campaign/leads?page=${page}&per_page=20&filter=${currentFilter}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    console.error('Error loading leads:', data.error);
+                    return;
+                }
+
+                // Build leads table
+                let html = `
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Email</th>
+                                <th>Company</th>
+                                <th>Status</th>
+                                <th>Website</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                const startNum = (page - 1) * 20;
+                data.leads.forEach((lead, index) => {
+                    html += `
+                        <tr>
+                            <td>${startNum + index + 1}</td>
+                            <td>${lead.email}</td>
+                            <td>${lead.company}</td>
+                            <td>
+                                <span class="badge ${lead.status === 'Active' ? 'bg-success' : 'bg-secondary'}">
+                                    ${lead.status}
+                                </span>
+                            </td>
+                            <td>
+                                ${lead.custom_fields.website ?
+                                    `<a href="${lead.custom_fields.website}" target="_blank" class="text-decoration-none">Visit</a>` :
+                                    '-'}
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                        </tbody>
+                    </table>
+                `;
+
+                document.getElementById('leads-container').innerHTML = html;
+
+                // Build pagination
+                if (data.pagination.pages > 1) {
+                    let paginationHtml = '<nav><ul class="pagination justify-content-center">';
+
+                    for (let i = 1; i <= data.pagination.pages; i++) {
+                        paginationHtml += `
+                            <li class="page-item ${i === page ? 'active' : ''}">
+                                <a class="page-link" href="#" onclick="loadLeads(${i}); return false;">${i}</a>
+                            </li>
+                        `;
+                    }
+
+                    paginationHtml += '</ul></nav>';
+                    document.getElementById('pagination-container').innerHTML = paginationHtml;
+                } else {
+                    document.getElementById('pagination-container').innerHTML = '';
+                }
+
+            } catch (error) {
+                console.error('Error loading leads:', error);
+                document.getElementById('leads-container').innerHTML =
+                    '<div class="alert alert-danger">Error loading leads</div>';
+            }
+        }
+
+        // Set filter
+        function setFilter(filter) {
+            currentFilter = filter;
+            currentPage = 1;
+
+            // Update active button
+            document.querySelectorAll('.filter-tabs .btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            loadLeads(1);
+        }
+
+        // Start campaign
+        async function startCampaign() {
+            if (!confirm('Are you sure you want to start the campaign? This will begin sending emails to leads.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/campaign/start', { method: 'POST' });
+                const data = await response.json();
+
+                const messageDiv = document.getElementById('campaign-message');
+                if (data.success) {
+                    messageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+                    setTimeout(() => refreshData(), 1000);
+                } else {
+                    messageDiv.innerHTML = '<div class="alert alert-warning">' + data.message + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('campaign-message').innerHTML =
+                    '<div class="alert alert-danger">Error: ' + error + '</div>';
+            }
+        }
+
+        // Pause campaign
+        async function pauseCampaign() {
+            if (!confirm('Pause the campaign?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/campaign/pause', { method: 'POST' });
+                const data = await response.json();
+
+                const messageDiv = document.getElementById('campaign-message');
+                if (data.success) {
+                    messageDiv.innerHTML = '<div class="alert alert-success">' + data.message + '</div>';
+                    setTimeout(() => refreshData(), 1000);
+                } else {
+                    messageDiv.innerHTML = '<div class="alert alert-warning">' + data.message + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('campaign-message').innerHTML =
+                    '<div class="alert alert-danger">Error: ' + error + '</div>';
+            }
+        }
+
+        // Refresh all data
+        function refreshData() {
+            loadStats();
+            loadLeads(currentPage);
+            document.getElementById('campaign-message').innerHTML = '';
+        }
+
+        // Initial load
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshData();
+        });
+    </script>
+</body>
+</html>
