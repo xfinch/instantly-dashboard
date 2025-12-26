@@ -9,9 +9,6 @@ import sys
 from flask import Flask, render_template, jsonify, request
 from functools import wraps
 
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'execution'))
-
 from instantly_client import InstantlyClient
 
 app = Flask(__name__)
