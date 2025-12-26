@@ -46,7 +46,12 @@ CLINIC_KEYWORDS = ['clinic', 'medicine', 'wellness', 'health', 'naturopathic',
 
 def get_client():
     """Get Instantly client"""
-    return InstantlyClient()
+    try:
+        return InstantlyClient()
+    except Exception as e:
+        print(f"ERROR: Failed to initialize Instantly client: {e}")
+        print(f"INSTANTLY_API_KEY is {'set' if os.environ.get('INSTANTLY_API_KEY') else 'NOT SET'}")
+        raise
 
 
 def get_all_campaign_leads(client, campaign_id):
@@ -98,13 +103,17 @@ def dashboard():
 def campaign_stats():
     """Get campaign statistics"""
     try:
+        print("Starting campaign_stats endpoint")
         client = get_client()
+        print("Client initialized successfully")
 
         # Get campaign details
         campaign = None
         try:
             campaign = client._make_request("GET", f"campaigns/{CAMPAIGN_ID}", {})
-        except:
+            print(f"Campaign fetched: {campaign.get('name')}")
+        except Exception as e:
+            print(f"Campaign fetch failed: {e}, using defaults")
             campaign = {
                 'name': 'WA Integrative Medicine',
                 'status': 0,
@@ -112,14 +121,18 @@ def campaign_stats():
             }
 
         # Get all leads
+        print("Fetching leads...")
         all_leads = get_all_campaign_leads(client, CAMPAIGN_ID)
+        print(f"Fetched {len(all_leads)} total leads")
+
         clinic_leads = filter_clinic_leads(all_leads)
+        print(f"Filtered to {len(clinic_leads)} clinic leads")
 
         # Get leads with different statuses
         active_leads = [l for l in clinic_leads if l.get('status') == 1]
         pending_leads = [l for l in clinic_leads if l.get('status') == 0]
 
-        return jsonify({
+        result = {
             'campaign': {
                 'name': campaign.get('name', 'WA Integrative Medicine'),
                 'id': CAMPAIGN_ID,
@@ -133,8 +146,13 @@ def campaign_stats():
                 'active_leads': len(active_leads),
                 'pending_leads': len(pending_leads)
             }
-        })
+        }
+        print(f"Returning stats: {result}")
+        return jsonify(result)
     except Exception as e:
+        print(f"ERROR in campaign_stats: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 
