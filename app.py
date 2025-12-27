@@ -251,23 +251,19 @@ def start_campaign():
     try:
         client = get_client()
 
-        # Try to start campaign
+        # Update campaign status to active (paused: false)
         try:
-            response = client._make_request("POST", f"campaigns/{CAMPAIGN_ID}/launch", {})
-            return jsonify({'success': True, 'message': 'Campaign started'})
-        except:
-            # Try alternative - update status
-            try:
-                response = client._make_request("PUT", f"campaigns/{CAMPAIGN_ID}", {
-                    "status": 1
-                })
-                return jsonify({'success': True, 'message': 'Campaign activated'})
-            except Exception as e:
-                return jsonify({
-                    'success': False,
-                    'message': 'Could not start via API. Please start manually in Instantly.ai dashboard.',
-                    'error': str(e)
-                }), 400
+            response = client._make_request("PATCH", f"campaigns/{CAMPAIGN_ID}", {
+                "paused": False
+            })
+            return jsonify({'success': True, 'message': 'Campaign started successfully'})
+        except Exception as e:
+            print(f"Error starting campaign: {e}")
+            return jsonify({
+                'success': False,
+                'message': f'Could not start campaign via API: {str(e)}',
+                'note': 'You may need to start the campaign manually in the Instantly.ai dashboard.'
+            }), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -280,15 +276,16 @@ def pause_campaign():
         client = get_client()
 
         try:
-            response = client._make_request("PUT", f"campaigns/{CAMPAIGN_ID}", {
-                "status": 0
+            response = client._make_request("PATCH", f"campaigns/{CAMPAIGN_ID}", {
+                "paused": True
             })
-            return jsonify({'success': True, 'message': 'Campaign paused'})
+            return jsonify({'success': True, 'message': 'Campaign paused successfully'})
         except Exception as e:
+            print(f"Error pausing campaign: {e}")
             return jsonify({
                 'success': False,
-                'message': 'Could not pause via API',
-                'error': str(e)
+                'message': f'Could not pause campaign via API: {str(e)}',
+                'note': 'You may need to pause the campaign manually in the Instantly.ai dashboard.'
             }), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
