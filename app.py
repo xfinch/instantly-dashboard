@@ -6,6 +6,7 @@ Web UI for managing email campaigns
 
 import os
 import sys
+import json
 from flask import Flask, render_template, jsonify, request
 from functools import wraps
 
@@ -42,6 +43,28 @@ def requires_auth(f):
 CAMPAIGN_ID = "bfe30fd9-3417-410f-800b-7b8e7151a965"
 CLINIC_KEYWORDS = ['clinic', 'medicine', 'wellness', 'health', 'naturopathic',
                    'integrative', 'holistic', 'doctor', 'dr.', 'medical']
+
+# Load enriched data
+ENRICHED_DATA = {}
+def load_enriched_data():
+    """Load enriched lead data from JSON file"""
+    global ENRICHED_DATA
+    enriched_path = os.path.join(os.path.dirname(__file__), '..', '.tmp', 'all_wa_leads_enriched.json')
+    try:
+        with open(enriched_path, 'r') as f:
+            leads = json.load(f)
+            # Index by email for quick lookup
+            for lead in leads:
+                if lead.get('email'):
+                    ENRICHED_DATA[lead['email'].lower()] = lead
+            print(f"Loaded {len(ENRICHED_DATA)} enriched leads")
+    except FileNotFoundError:
+        print(f"Warning: Enriched data file not found at {enriched_path}")
+    except Exception as e:
+        print(f"Error loading enriched data: {e}")
+
+# Load enriched data on startup
+load_enriched_data()
 
 
 def get_client():
@@ -257,6 +280,99 @@ def pause_campaign():
                 'message': 'Could not pause via API',
                 'error': str(e)
             }), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/lead/details/<email>')
+@requires_auth
+def lead_details(email):
+    """Get enriched details for a specific lead"""
+    try:
+        email_lower = email.lower()
+        enriched = ENRICHED_DATA.get(email_lower)
+
+        if not enriched:
+            return jsonify({'error': 'Lead not found in enriched data'}), 404
+
+        # Return relevant enriched information
+        details = {
+            'company_name': enriched.get('title', 'Unknown'),
+            'category': enriched.get('categoryName', 'N/A'),
+            'address': enriched.get('address', 'N/A'),
+            'city': enriched.get('city', 'N/A'),
+            'state': enriched.get('state', 'N/A'),
+            'website': enriched.get('website', 'N/A'),
+            'phone': enriched.get('phone', 'N/A'),
+            'rating': enriched.get('totalScore'),
+            'review_count': enriched.get('reviewsCount', 0),
+            'hours': enriched.get('openingHours', []),
+            'accessibility': enriched.get('additionalInfo', {}).get('Accessibility', []),
+            'amenities': enriched.get('additionalInfo', {}).get('Amenities', []),
+            'payments': enriched.get('additionalInfo', {}).get('Payments', []),
+        }
+
+        return jsonify(details)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/campaign/message-preview')
+@requires_auth
+def message_preview():
+    """Get message preview with personalization"""
+    try:
+        client = get_client()
+        email = request.args.get('email', '')
+
+        # Get campaign details to retrieve email template
+        campaign = client._make_request("GET", f"campaigns/{CAMPAIGN_ID}", {})
+
+        # Get enriched data for personalization
+        enriched = ENRICHED_DATA.get(email.lower()) if email else None
+
+        # Extract email sequences from campaign
+        sequences = campaign.get('sequences', [])
+
+        if not sequences:
+            return jsonify({'error': 'No email sequences found'}), 404
+
+        # Get first email in sequence
+        first_email = sequences[0] if sequences else {}
+
+        # Personalize the message if we have enriched data
+        subject = first_email.get('subject', '')
+        body = first_email.get('body', '')
+
+        if enriched:
+            # Replace common variables
+            company_name = enriched.get('title', 'your practice')
+            city = enriched.get('city', '')
+            category = enriched.get('categoryName', 'healthcare provider')
+
+            personalization = {
+                'company_name': company_name,
+                'city': city,
+                'category': category,
+                'rating': enriched.get('totalScore'),
+                'review_count': enriched.get('reviewsCount', 0)
+            }
+        else:
+            personalization = {
+                'company_name': '{{company_name}}',
+                'city': '{{city}}',
+                'category': '{{category}}',
+                'rating': '{{rating}}',
+                'review_count': '{{review_count}}'
+            }
+
+        return jsonify({
+            'subject': subject,
+            'body': body,
+            'personalization': personalization,
+            'sequence_position': 1,
+            'total_sequences': len(sequences)
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

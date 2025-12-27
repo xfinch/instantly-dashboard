@@ -43,6 +43,28 @@
         .filter-tabs {
             margin-bottom: 1rem;
         }
+        .lead-row {
+            cursor: pointer;
+        }
+        .lead-row:hover {
+            background-color: #f8f9fa;
+        }
+        .modal-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #6c757d;
+        }
+        .email-preview {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 1.5rem;
+            max-height: 400px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
@@ -147,6 +169,38 @@
                 <div id="pagination-container" class="mt-3"></div>
             </div>
         </div>
+
+        <!-- Message Preview Section -->
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h5 class="card-title mb-3">Email Message Preview</h5>
+                <div class="mb-3">
+                    <label class="form-label">Preview for Email (optional):</label>
+                    <input type="email" class="form-control" id="preview-email" placeholder="Enter email address to personalize">
+                </div>
+                <button class="btn btn-primary" onclick="loadMessagePreview()">Load Message Preview</button>
+                <div id="message-preview-container" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lead Details Modal -->
+    <div class="modal fade" id="leadDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Lead Details</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="lead-details-content">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
@@ -214,7 +268,7 @@
                 const startNum = (page - 1) * 20;
                 data.leads.forEach((lead, index) => {
                     html += `
-                        <tr>
+                        <tr class="lead-row" onclick="showLeadDetails('${lead.email}')">
                             <td>${startNum + index + 1}</td>
                             <td>${lead.email}</td>
                             <td>${lead.company}</td>
@@ -223,7 +277,7 @@
                                     ${lead.status}
                                 </span>
                             </td>
-                            <td>
+                            <td onclick="event.stopPropagation()">
                                 ${lead.custom_fields.website ?
                                     `<a href="${lead.custom_fields.website}" target="_blank" class="text-decoration-none">Visit</a>` :
                                     '-'}
@@ -329,6 +383,134 @@
             loadStats();
             loadLeads(currentPage);
             document.getElementById('campaign-message').innerHTML = '';
+        }
+
+        // Show lead details modal
+        async function showLeadDetails(email) {
+            const modal = new bootstrap.Modal(document.getElementById('leadDetailsModal'));
+            modal.show();
+
+            try {
+                const response = await fetch(`/api/lead/details/${encodeURIComponent(email)}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    document.getElementById('lead-details-content').innerHTML =
+                        `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+
+                // Build details HTML
+                let html = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6 class="info-label">Company Information</h6>
+                            <p><strong>Name:</strong> ${data.company_name}</p>
+                            <p><strong>Category:</strong> ${data.category}</p>
+                            <p><strong>Email:</strong> ${email}</p>
+                            <p><strong>Phone:</strong> ${data.phone}</p>
+                            <p><strong>Website:</strong> ${data.website !== 'N/A' ? `<a href="${data.website}" target="_blank">${data.website}</a>` : 'N/A'}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6 class="info-label">Location</h6>
+                            <p><strong>Address:</strong> ${data.address}</p>
+                            <p><strong>City:</strong> ${data.city}</p>
+                            <p><strong>State:</strong> ${data.state}</p>
+                            ${data.rating ? `<p><strong>Rating:</strong> ${data.rating} ⭐ (${data.review_count} reviews)</p>` : ''}
+                        </div>
+                    </div>`;
+
+                if (data.hours && data.hours.length > 0) {
+                    html += `
+                        <hr>
+                        <h6 class="info-label">Business Hours</h6>
+                        <div class="row">
+                    `;
+                    data.hours.forEach(h => {
+                        html += `<div class="col-md-6"><strong>${h.day}:</strong> ${h.hours}</div>`;
+                    });
+                    html += '</div>';
+                }
+
+                if (data.accessibility && data.accessibility.length > 0) {
+                    html += `<hr><h6 class="info-label">Accessibility Features</h6><ul class="list-unstyled">`;
+                    data.accessibility.forEach(item => {
+                        const key = Object.keys(item)[0];
+                        if (item[key]) html += `<li>✓ ${key}</li>`;
+                    });
+                    html += '</ul>';
+                }
+
+                document.getElementById('lead-details-content').innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading lead details:', error);
+                document.getElementById('lead-details-content').innerHTML =
+                    '<div class="alert alert-danger">Error loading lead details</div>';
+            }
+        }
+
+        // Load message preview
+        async function loadMessagePreview() {
+            const email = document.getElementById('preview-email').value;
+            const container = document.getElementById('message-preview-container');
+
+            container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary"></div></div>';
+
+            try {
+                const url = email ?
+                    `/api/campaign/message-preview?email=${encodeURIComponent(email)}` :
+                    '/api/campaign/message-preview';
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+
+                let html = `
+                    <div class="email-preview">
+                        <div class="mb-3">
+                            <p class="info-label mb-1">Subject:</p>
+                            <h6>${data.subject || 'No subject'}</h6>
+                        </div>
+                        <div class="mb-3">
+                            <p class="info-label mb-1">Message Body:</p>
+                            <div style="white-space: pre-wrap;">${data.body || 'No body content'}</div>
+                        </div>
+                `;
+
+                if (data.personalization) {
+                    html += `
+                        <hr>
+                        <p class="info-label mb-2">Personalization Variables:</p>
+                        <div class="row">
+                    `;
+                    for (const [key, value] of Object.entries(data.personalization)) {
+                        html += `
+                            <div class="col-md-6 mb-2">
+                                <code>{{${key}}}</code> → <strong>${value || 'N/A'}</strong>
+                            </div>
+                        `;
+                    }
+                    html += '</div>';
+                }
+
+                html += `
+                        <div class="mt-3 text-muted small">
+                            Email ${data.sequence_position} of ${data.total_sequences} in sequence
+                        </div>
+                    </div>
+                `;
+
+                container.innerHTML = html;
+
+            } catch (error) {
+                console.error('Error loading message preview:', error);
+                container.innerHTML = '<div class="alert alert-danger">Error loading preview</div>';
+            }
         }
 
         // Initial load
