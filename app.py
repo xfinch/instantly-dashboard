@@ -49,19 +49,29 @@ ENRICHED_DATA = {}
 def load_enriched_data():
     """Load enriched lead data from JSON file"""
     global ENRICHED_DATA
-    enriched_path = os.path.join(os.path.dirname(__file__), '..', '.tmp', 'all_wa_leads_enriched.json')
-    try:
-        with open(enriched_path, 'r') as f:
-            leads = json.load(f)
-            # Index by email for quick lookup
-            for lead in leads:
-                if lead.get('email'):
-                    ENRICHED_DATA[lead['email'].lower()] = lead
-            print(f"Loaded {len(ENRICHED_DATA)} enriched leads")
-    except FileNotFoundError:
-        print(f"Warning: Enriched data file not found at {enriched_path}")
-    except Exception as e:
-        print(f"Error loading enriched data: {e}")
+
+    # Try multiple paths for the enriched data file
+    possible_paths = [
+        os.path.join(os.path.dirname(__file__), 'all_wa_leads_enriched.json'),  # Same directory (for Railway)
+        os.path.join(os.path.dirname(__file__), '..', '.tmp', 'all_wa_leads_enriched.json'),  # Local dev
+    ]
+
+    for enriched_path in possible_paths:
+        try:
+            if os.path.exists(enriched_path):
+                with open(enriched_path, 'r') as f:
+                    leads = json.load(f)
+                    # Index by email for quick lookup
+                    for lead in leads:
+                        if lead.get('email'):
+                            ENRICHED_DATA[lead['email'].lower()] = lead
+                print(f"✓ Loaded {len(ENRICHED_DATA)} enriched leads from {enriched_path}")
+                return
+        except Exception as e:
+            print(f"Error loading from {enriched_path}: {e}")
+            continue
+
+    print("⚠ Warning: No enriched data file found. Lead details and personalization will not be available.")
 
 # Load enriched data on startup
 load_enriched_data()
