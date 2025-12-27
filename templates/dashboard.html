@@ -491,7 +491,7 @@
                     for (const [key, value] of Object.entries(data.personalization)) {
                         html += `
                             <div class="col-md-6 mb-2">
-                                <code>{{${key}}}</code> → <strong>${value || 'N/A'}</strong>
+                                <code>{<!-- -->{${key}}</code> → <strong>${value || 'N/A'}</strong>
                             </div>
                         `;
                     }
