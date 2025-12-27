@@ -267,8 +267,10 @@
 
                 const startNum = (page - 1) * 20;
                 data.leads.forEach((lead, index) => {
+                    const phone = lead.custom_fields.phone || '';
+                    const company = lead.company || '';
                     html += `
-                        <tr class="lead-row" onclick="showLeadDetails('${lead.email}')">
+                        <tr class="lead-row" onclick="showLeadDetails('${lead.email}', '${phone.replace(/'/g, "\\'")}', '${company.replace(/'/g, "\\'")}')">
                             <td>${startNum + index + 1}</td>
                             <td>${lead.email}</td>
                             <td>${lead.company}</td>
@@ -386,12 +388,19 @@
         }
 
         // Show lead details modal
-        async function showLeadDetails(email) {
+        async function showLeadDetails(email, phone = '', company = '') {
             const modal = new bootstrap.Modal(document.getElementById('leadDetailsModal'));
             modal.show();
 
             try {
-                const response = await fetch(`/api/lead/details/${encodeURIComponent(email)}`);
+                // Build URL with query parameters for better matching
+                let url = `/api/lead/details/${encodeURIComponent(email)}`;
+                const params = new URLSearchParams();
+                if (phone) params.append('phone', phone);
+                if (company) params.append('company', company);
+                if (params.toString()) url += '?' + params.toString();
+
+                const response = await fetch(url);
                 const data = await response.json();
 
                 if (data.error) {

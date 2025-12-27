@@ -44,11 +44,27 @@ CAMPAIGN_ID = "bfe30fd9-3417-410f-800b-7b8e7151a965"
 CLINIC_KEYWORDS = ['clinic', 'medicine', 'wellness', 'health', 'naturopathic',
                    'integrative', 'holistic', 'doctor', 'dr.', 'medical']
 
-# Load enriched data
-ENRICHED_DATA = {}
+# Load enriched data - indexed by multiple keys
+ENRICHED_DATA_BY_EMAIL = {}
+ENRICHED_DATA_BY_PHONE = {}
+ENRICHED_DATA_BY_NAME = {}
+
+def normalize_phone(phone):
+    """Normalize phone number for comparison"""
+    if not phone:
+        return None
+    # Remove all non-digit characters
+    return ''.join(c for c in str(phone) if c.isdigit())
+
+def normalize_name(name):
+    """Normalize company name for comparison"""
+    if not name:
+        return None
+    return name.lower().strip()
+
 def load_enriched_data():
     """Load enriched lead data from JSON file"""
-    global ENRICHED_DATA
+    global ENRICHED_DATA_BY_EMAIL, ENRICHED_DATA_BY_PHONE, ENRICHED_DATA_BY_NAME
 
     # Try multiple paths for the enriched data file
     possible_paths = [
@@ -61,11 +77,27 @@ def load_enriched_data():
             if os.path.exists(enriched_path):
                 with open(enriched_path, 'r') as f:
                     leads = json.load(f)
-                    # Index by email for quick lookup
+                    # Index by email, phone, and company name for flexible lookup
                     for lead in leads:
+                        # Index by email if available
                         if lead.get('email'):
-                            ENRICHED_DATA[lead['email'].lower()] = lead
-                print(f"✓ Loaded {len(ENRICHED_DATA)} enriched leads from {enriched_path}")
+                            ENRICHED_DATA_BY_EMAIL[lead['email'].lower()] = lead
+
+                        # Index by phone
+                        phone = normalize_phone(lead.get('phone') or lead.get('phoneUnformatted'))
+                        if phone:
+                            ENRICHED_DATA_BY_PHONE[phone] = lead
+
+                        # Index by company name/title
+                        name = normalize_name(lead.get('title'))
+                        if name:
+                            ENRICHED_DATA_BY_NAME[name] = lead
+
+                total_indexed = len(ENRICHED_DATA_BY_EMAIL) + len(ENRICHED_DATA_BY_PHONE) + len(ENRICHED_DATA_BY_NAME)
+                print(f"✓ Loaded enriched data from {enriched_path}")
+                print(f"  - {len(ENRICHED_DATA_BY_EMAIL)} by email")
+                print(f"  - {len(ENRICHED_DATA_BY_PHONE)} by phone")
+                print(f"  - {len(ENRICHED_DATA_BY_NAME)} by name")
                 return
         except Exception as e:
             print(f"Error loading from {enriched_path}: {e}")
@@ -291,13 +323,44 @@ def pause_campaign():
         return jsonify({'error': str(e)}), 500
 
 
+def find_enriched_lead(email=None, phone=None, company_name=None):
+    """Find enriched lead data by trying multiple lookup strategies"""
+    # Try email lookup
+    if email:
+        enriched = ENRICHED_DATA_BY_EMAIL.get(email.lower())
+        if enriched:
+            return enriched
+
+    # Try phone lookup
+    if phone:
+        phone_norm = normalize_phone(phone)
+        if phone_norm:
+            enriched = ENRICHED_DATA_BY_PHONE.get(phone_norm)
+            if enriched:
+                return enriched
+
+    # Try company name lookup
+    if company_name:
+        name_norm = normalize_name(company_name)
+        if name_norm:
+            enriched = ENRICHED_DATA_BY_NAME.get(name_norm)
+            if enriched:
+                return enriched
+
+    return None
+
+
 @app.route('/api/lead/details/<email>')
 @requires_auth
 def lead_details(email):
     """Get enriched details for a specific lead"""
     try:
-        email_lower = email.lower()
-        enriched = ENRICHED_DATA.get(email_lower)
+        # Get optional parameters for better matching
+        phone = request.args.get('phone', '')
+        company_name = request.args.get('company', '')
+
+        # Try to find enriched data using multiple strategies
+        enriched = find_enriched_lead(email, phone, company_name)
 
         if not enriched:
             return jsonify({'error': 'Lead not found in enriched data'}), 404
